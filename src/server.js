@@ -5,6 +5,11 @@ const axios = require('axios');
 const cors = require('cors');
 require('dotenv').config();
 
+console.log('Environment variables loaded:');
+console.log('PORT:', process.env.PORT);
+console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET);
+console.log('LLM_API_KEY exists:', !!process.env.LLM_API_KEY);
+
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -13,7 +18,7 @@ const users = [
     {
         id: 1,
         username: 'admin',
-        password: '$2b$10$EIX5v6ZQ4w7j8s1V4x5J1OeD3a0d1G7c5XK8pZk9nYq6z5hXx2m6i', // adminpass
+        password: '$2b$10$idKTNUDlRbKeWAWId0DQr.C1RioRvsq72ekVXMWsBbsf11E3BQ/Ma', // adminpass
         role: 'admin',
     },
     {
@@ -38,17 +43,17 @@ const rolePermissions = {
     user: ['query_basic_data']
 };
 
-app.post('/login', async (req, res) => {
+app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
 
     const user = users.find(u => u.username === username);
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) return res.status(401).json({ message: 'Invalid credentials. Invalid User.' });
 
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!validPassword) return res.status(401).json({ message: 'Invalid credentials. Invalid Password.' });
 
     const token = jwt.sign(
-        { ide: user.id, username: user.username, role: user.role },
+        { id: user.id, username: user.username, role: user.role },
         process.env.JWT_SECRET,
         { expiresIn: '1h' }
     );
@@ -88,6 +93,18 @@ app.get('/api/conversations/:id', authenticateToken, (req, res) => {
         return res.status(404).json({ message: 'Conversation not found' });
     }
     res.json(conversation);
+});
+
+app.get('/api/conversations/:id/messages', authenticateToken, (req, res) => {
+    const conversation = conversations.find(
+        c => c.id === req.params.id && c.userId === req.user.id
+    );
+
+    if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+    }
+    
+    res.json(conversation.messages || []);
 });
 
 app.post('/api/conversations', authenticateToken, (req, res) => {
