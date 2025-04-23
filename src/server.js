@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const axios = require('axios');
 const cors = require('cors');
+const Anthropic = require('@anthropic-ai/sdk');
 require('dotenv').config();
 
 console.log('Environment variables loaded:');
@@ -38,7 +39,7 @@ const users = [
 const conversations = [];
 
 const rolePermissions = {
-    admin: ['query_all_data', 'view_sensitive', 'manage_users'],
+    admin: ['query_all_data', 'query_basic_data', 'view_sensitive', 'manage_users'],
     manager: ['query_all_data', 'view_sensitive'],
     user: ['query_basic_data']
 };
@@ -192,38 +193,32 @@ app.delete('/api/conversations/:id', authenticateToken, (req, res) => {
     res.json({ message: 'Conversation deleted' });
 });
 
-app.post('/query', authenticateToken, async (req, res) => {
-    const { prompt } = req.body;
-    const user = req.user;
-
-    const queryPermission = prompt.includes('sensitive') ? 'view_sensitive' : 'query_basic_data';
-
-    if (!hasPermission(user, queryPermission)) {
-        return res.status(403).json({
-            message: 'You do not have permission to make this query'
-        });
-    }
-
+app.post('/api/query', authenticateToken, async (req, res) => {
     try {
-        const response = await axios.post('https://api.anthropic.com/v1/messages',
-            {
-                model: 'claude-3-sonnet-20240229',
-                max_tokens: 1000,
-                messages: [{ role: 'user', content: prompt}]
-            },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': process.env.LLM_API_KEY,
-                    'anthropic-version': '2023-06-01'
-                }
-            }
-        );
+        console.log('Request body:', req.body);
+    
+        const { prompt, conversationId } = req.body;
+        const user = req.user;
 
-        res.json({ response: response.data.content[0].text });
+        const anthropic = new Anthropic({
+            apiKey: process.env.LLM_API_KEY,
+        });
+
+        const message = await anthropic.messages.create({
+            model: 'claude-3-7-sonnet-20250219',
+            max_tokens: 1024,
+            messages: [{ role: 'user', content: prompt }]
+        });
+
+        console.log('API call successful');
+
+        res.json({ response: message.content[0].text });
     } catch (error) {
         console.error('Error calling LLM API:', error);
-        res.status(500).json({ message: 'Error processing your query' });
+        res.status(500).json({ 
+            message: 'Error processing your query',
+            details: error.message
+        });
     }
 });
 
